@@ -1,207 +1,223 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
-from imageio import imwrite
+
 
 # Fonction pour ajouter un bruit gaussien
 def gaussien(image, variance):
-    """Ajoute un bruit blanc gaussien à une image sans fonctions prédéfinies."""
     mean = 0
     noisy_image = image.copy()
     for i in range(image.shape[0]):
         for j in range(image.shape[1]):
-            # Génération de bruit gaussien : Box-Muller
             u1, u2 = np.random.rand(), np.random.rand()
             z = np.sqrt(-2 * np.log(u1)) * np.cos(2 * np.pi * u2)
             noise = mean + np.sqrt(variance) * z
             noisy_image[i, j] += noise
-            # Limiter entre 0 et 1
             noisy_image[i, j] = max(0, min(1, noisy_image[i, j]))
     return noisy_image
 
 # Fonction pour ajouter un bruit poivre et sel
 def poivre_sel(image, pourcentage):
-    """Ajoute un bruit poivre et sel à une image sans fonctions prédéfinies."""
     noisy_image = image.copy()
     num_pixels = int(pourcentage * image.size)
     height, width = image.shape
 
-    # Ajouter du poivre (noir)
     for _ in range(num_pixels // 2):
         i, j = np.random.randint(0, height), np.random.randint(0, width)
         noisy_image[i, j] = 0
 
-    # Ajouter du sel (blanc)
     for _ in range(num_pixels // 2):
         i, j = np.random.randint(0, height), np.random.randint(0, width)
         noisy_image[i, j] = 1
 
     return noisy_image
 
-# Fonction pour appliquer un filtre de Prewitt (horizontal et vertical séparés)
+
+# Filtre Prewitt
 def prewitt(image):
-    """Applique un filtre de Prewitt sur une image sans fonctions prédéfinies."""
     kernel_x = np.array([[-1, 0, 1], [-1, 0, 1], [-1, 0, 1]])
     kernel_y = np.array([[-1, -1, -1], [0, 0, 0], [1, 1, 1]])
-
-    # Filtrage horizontal
     grad_x = np.zeros_like(image)
-    for i in range(1, image.shape[0] - 1):
-        for j in range(1, image.shape[1] - 1):
-            grad_x[i, j] = np.sum(kernel_x * image[i - 1:i + 2, j - 1:j + 2])
-
-    # Filtrage vertical
     grad_y = np.zeros_like(image)
     for i in range(1, image.shape[0] - 1):
         for j in range(1, image.shape[1] - 1):
+            grad_x[i, j] = np.sum(kernel_x * image[i - 1:i + 2, j - 1:j + 2])
             grad_y[i, j] = np.sum(kernel_y * image[i - 1:i + 2, j - 1:j + 2])
-
+    grad_x = np.abs(grad_x) / np.max(np.abs(grad_x))
+    grad_y = np.abs(grad_y) / np.max(np.abs(grad_y))
     return grad_x, grad_y
 
 
-# Fonction pour appliquer un filtre de Sobel (horizontal et vertical séparés)
+# Filtre Sobel
 def sobel(image):
-    """Applique un filtre de Sobel sur une image sans fonctions prédéfinies."""
     kernel_x = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
     kernel_y = np.array([[1, 2, 1], [0, 0, 0], [-1, -2, -1]])
-
-    # Filtrage horizontal
     grad_x = np.zeros_like(image)
+    grad_y = np.zeros_like(image)
     for i in range(1, image.shape[0] - 1):
         for j in range(1, image.shape[1] - 1):
             grad_x[i, j] = np.sum(kernel_x * image[i - 1:i + 2, j - 1:j + 2])
+            grad_y[i, j] = np.sum(kernel_y * image[i - 1:i + 2, j - 1:j + 2])
+    grad_x = np.abs(grad_x) / np.max(np.abs(grad_x))
+    grad_y = np.abs(grad_y) / np.max(np.abs(grad_y))
+    return grad_x, grad_y
 
-    # Filtrage vertical
+
+# Filtre Robert
+def robert(image):
+    kernel_x = np.array([[1, 0], [0, -1]])
+    kernel_y = np.array([[0, 1], [-1, 0]])
+    grad_x = np.zeros_like(image)
     grad_y = np.zeros_like(image)
     for i in range(1, image.shape[0] - 1):
         for j in range(1, image.shape[1] - 1):
-            grad_y[i, j] = np.sum(kernel_y * image[i - 1:i + 2, j - 1:j + 2])
-
+            grad_x[i, j] = np.sum(kernel_x * image[i:i + 2, j:j + 2])
+            grad_y[i, j] = np.sum(kernel_y * image[i:i + 2, j:j + 2])
+    grad_x = np.abs(grad_x) / np.max(np.abs(grad_x))
+    grad_y = np.abs(grad_y) / np.max(np.abs(grad_y))
     return grad_x, grad_y
 
 
-# Fonction pour appliquer un filtre de Robert (horizontal et vertical séparés)
-def robert(image):
-    """Applique un filtre de Robert sur une image sans fonctions prédéfinies."""
-    kernel_x = np.array([[1, 0], [0, -1]])
-    kernel_y = np.array([[0, 1], [-1, 0]])
-
-    # Dimensions de l'image
-    grad_x = np.zeros_like(image)
-    grad_y = np.zeros_like(image)
-
-    for i in range(image.shape[0] - 1):
-        for j in range(image.shape[1] - 1):
-            # Calcul du gradient horizontal (Robert)
-            grad_x[i, j] = np.sum(kernel_x * image[i:i+2, j:j+2])
-            # Calcul du gradient vertical (Robert)
-            grad_y[i, j] = np.sum(kernel_y * image[i:i+2, j:j+2])
-
-    return grad_x, grad_y
-
-
-# Fonction pour appliquer le seuillage simple
-def SeuilSim(image, seuil):
-    """Applique le seuillage simple à une image."""
-    binary_image = np.where(image > seuil, 1, 0)
-    return binary_image
-
-
-# Fonction pour calculer le gradient entre deux matrices (par exemple, grad_x et grad_y)
+# Calcul du gradient global
 def Gradient(grad_x, grad_y):
-    """Calcul du gradient global entre deux matrices (gradient horizontal et vertical)."""
-    # Calculer le gradient en utilisant la racine carrée de la somme des carrés
     gradient = np.sqrt(grad_x**2 + grad_y**2)
+    gradient = gradient / np.max(gradient)
     return gradient
 
 
-# Fonction principale pour gérer l'affichage et l'application des filtres
+# Fonction de seuillage simple
+def SeuilSim(image, seuil):
+    if image.max() > 1:
+        image = image / 255.0
+    binary_image = np.zeros_like(image)
+    binary_image[image > seuil] = 1
+    return (binary_image * 255).astype(np.uint8)
+
+
+# Fonction de seuillage par hystérésis
+def SeuilHys(image, seuil_bas, seuil_haut):
+    binary_image = np.zeros_like(image)
+    binary_image[image > seuil_haut] = 1
+    visited = np.zeros_like(image, dtype=bool)
+    queue = []
+
+    for i in range(1, image.shape[0] - 1):
+        for j in range(1, image.shape[1] - 1):
+            if binary_image[i, j] == 1 and not visited[i, j]:
+                queue.append((i, j))
+
+    while queue:
+        x, y = queue.pop(0)
+        if visited[x, y]:
+            continue
+        visited[x, y] = True
+        if image[x, y] > seuil_bas:
+            binary_image[x, y] = 1
+            for dx in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < image.shape[0] and 0 <= ny < image.shape[1]:
+                        queue.append((nx, ny))
+
+    return binary_image
+
+
+# Fonction principale
 def main(image_path):
-    # Ouverture de l'image à partir du chemin fourni
-    img = Image.open(image_path).convert('L')  # Convertir en niveaux de gris
-    image = np.array(img) / 255.0  # Normaliser l'image en [0, 1]
+    img = Image.open(image_path).convert('L')
+    image = np.array(img) / 255.0
 
-    # Choix du filtre
-    filtre = int(input("Entrez le numéro du filtre que vous voulez utiliser (1: Prewitt, 2: Sobel, 3: Robert) : "))
+    # Demander le type de bruit
+    noise_choice = int(input("Choisissez le bruit (1: Gaussien, 2: Poivre et Sel, 3: Aucun): "))
+    if noise_choice == 1:
+        variance = float(input("Entrez la variance du bruit gaussien (ex: 0.02): "))
+        noisy_image = gaussien(image, variance=variance)
+    elif noise_choice == 2:
+        pourcentage = float(input("Entrez le pourcentage de bruit poivre et sel (ex: 0.05): "))
+        noisy_image = poivre_sel(image, pourcentage=pourcentage)
+    else:
+        noisy_image = image.copy()
 
-    # Appliquer le filtre sélectionné
-    if filtre == 1:  # Prewitt
+    # Demander le filtre à appliquer
+    filter_choice = int(input("Choisissez le filtre (1: Prewitt, 2: Sobel, 3: Robert): "))
+    if filter_choice == 1:
         grad_x, grad_y = prewitt(image)
-    elif filtre == 2:  # Sobel
+        noisy_grad_x, noisy_grad_y = prewitt(noisy_image)
+    elif filter_choice == 2:
         grad_x, grad_y = sobel(image)
-    elif filtre == 3:  # Robert
+        noisy_grad_x, noisy_grad_y = sobel(noisy_image)
+    elif filter_choice == 3:
         grad_x, grad_y = robert(image)
-    else:
-        raise ValueError("Filtre non reconnu")
+        noisy_grad_x, noisy_grad_y = robert(noisy_image)
 
-    # Calculer le gradient global entre grad_x et grad_y
+    # Calculer les gradients
     gradient_image = Gradient(grad_x, grad_y)
+    noisy_gradient_image = Gradient(noisy_grad_x, noisy_grad_y)
 
-    # Demander quel type de bruit ajouter
-    bruit = input("Voulez-vous ajouter un bruit ? (gaussien/poivre_sel/aucun) : ")
-    if bruit == "gaussien":
-        variance = float(input("Entrez la variance du bruit gaussien (par exemple 0.01) : "))
-        image_bruit = gaussien(image, variance)
-        imwrite("image_bruitee.png", (image_bruit * 255).astype(np.uint8))  # Sauvegarde de l'image bruitée
-    elif bruit == "poivre_sel":
-        pourcentage = float(input("Entrez le pourcentage du bruit poivre et sel (par exemple 0.05) : "))
-        image_bruit = poivre_sel(image, pourcentage)
-        imwrite("image_bruitee.png", (image_bruit * 255).astype(np.uint8))  # Sauvegarde de l'image bruitée
-    else:
-        image_bruit = image
-
-    # Appliquer le seuillage simple
-    seuil = float(input("Entrez la valeur du seuil pour appliquer le seuillage : "))
-
-    # Seuillage sur l'image originale
-    binary_original = SeuilSim(image, seuil)
-
-    # Seuillage sur l'image bruitée
-    binary_bruitee = SeuilSim(image_bruit, seuil)
+    # Demander le type de seuillage
+    threshold_choice = int(input("Choisissez le type de seuillage (1: Simple, 2: Hystérésis): "))
+    if threshold_choice == 1:
+        seuil = float(input("Entrez la valeur du seuil (0 à 1): "))
+        binary_gradient_image = SeuilSim(gradient_image, seuil)
+        noisy_binary_gradient_image = SeuilSim(noisy_gradient_image, seuil)
+    elif threshold_choice == 2:
+        seuil_bas = float(input("Entrez la valeur du seuil bas (0 à 1): "))
+        seuil_haut = float(input("Entrez la valeur du seuil haut (0 à 1): "))
+        binary_gradient_image = SeuilHys(gradient_image, seuil_bas, seuil_haut)
+        noisy_binary_gradient_image = SeuilHys(noisy_gradient_image, seuil_bas, seuil_haut)
 
     # Affichage des résultats
     plt.figure(figsize=(15, 10))
 
     # Image originale
-    plt.subplot(3, 3, 1)
+    plt.subplot(2, 5, 1)
     plt.title("Image Originale")
     plt.imshow(image, cmap="gray")
     plt.axis("off")
 
-    # Résultat du filtre horizontal
-    plt.subplot(3, 3, 2)
-    plt.title(f"Filtre Horizontal ({['Prewitt', 'Sobel', 'Robert'][filtre - 1]})")
+    plt.subplot(2, 5, 2)
+    plt.title("Filtre Horizontal Original")
     plt.imshow(grad_x, cmap="gray")
     plt.axis("off")
 
-    # Résultat du filtre vertical
-    plt.subplot(3, 3, 3)
-    plt.title(f"Filtre Vertical ({['Prewitt', 'Sobel', 'Robert'][filtre - 1]})")
+    plt.subplot(2, 5, 3)
+    plt.title("Filtre Vertical Original")
     plt.imshow(grad_y, cmap="gray")
     plt.axis("off")
 
-    # Gradient global
-    plt.subplot(3, 3, 4)
-    plt.title(f"Gradient Global ({['Prewitt', 'Sobel', 'Robert'][filtre - 1]})")
+    plt.subplot(2, 5, 4)
+    plt.title("Gradient Original")
     plt.imshow(gradient_image, cmap="gray")
     plt.axis("off")
 
+    plt.subplot(2, 5, 5)
+    plt.title("Seuillage Original")
+    plt.imshow(binary_gradient_image, cmap="gray")
+    plt.axis("off")
     # Image bruitée
-    plt.subplot(3, 3, 5)
+    plt.subplot(2, 5, 6)
     plt.title("Image Bruitée")
-    plt.imshow(image_bruit, cmap="gray")
+    plt.imshow(noisy_image, cmap="gray")
     plt.axis("off")
 
-    # Seuillage sur l'image originale
-    plt.subplot(3, 3, 6)
-    plt.title("Seuillage Image Originale")
-    plt.imshow(binary_original, cmap="gray")
+    plt.subplot(2, 5, 7)
+    plt.title("Filtre Horizontal Bruitée")
+    plt.imshow(noisy_grad_x, cmap="gray")
     plt.axis("off")
 
-    # Seuillage sur l'image bruitée
-    plt.subplot(3, 3, 7)
-    plt.title("Seuillage Image Bruitée")
-    plt.imshow(binary_bruitee, cmap="gray")
+    plt.subplot(2, 5, 8)
+    plt.title("Filtre Vertical Bruitée")
+    plt.imshow(noisy_grad_y, cmap="gray")
+    plt.axis("off")
+
+    plt.subplot(2, 5, 9)
+    plt.title("Gradient Bruitée")
+    plt.imshow(noisy_gradient_image, cmap="gray")
+    plt.axis("off")
+
+    plt.subplot(2, 5, 10)
+    plt.title("Seuillage Bruitée")
+    plt.imshow(noisy_binary_gradient_image, cmap="gray")
     plt.axis("off")
 
     plt.tight_layout()
@@ -209,6 +225,5 @@ def main(image_path):
 
 
 if __name__ == "__main__":
-    # Chemin de l'image
-    image_path = 'prj.bmp'
+    image_path = 'prj.bmp'  # Chemin de votre image
     main(image_path)
