@@ -1,8 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from PIL import Image
-import cv2 as cv
+from PIL import Image,ImageTk
+import cv2 
+import customtkinter as ctk
+from tkinter import filedialog,messagebox
 from collections import deque
+import os
 # Fonction pour ajouter un bruit gaussien
 def gaussien(image, variance):
     mean = 0
@@ -157,132 +160,364 @@ def LOG(img,sigma):
     return newImage
     # return cv.Laplacian(image, cv.CV_64F)
 
-# Fonction principale
-def main(image_path):
-    img = Image.open(image_path).convert('L')
-    image = np.array(img) / 255.0
+# Main GUI
+class ImageProcessorApp(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-    # Demander le type de bruit
-    noise_choice = int(input("Choisissez le bruit (1: Gaussien, 2: Poivre et Sel, 3: Aucun): "))
-    if noise_choice == 1:
-        variance = float(input("Entrez la variance du bruit gaussien (ex: 0.02): "))
-        noisy_image = gaussien(image, variance=variance)
-    elif noise_choice == 2:
-        pourcentage = float(input("Entrez le pourcentage de bruit poivre et sel (ex: 0.05): "))
-        noisy_image = poivre_sel(image, pourcentage=pourcentage)
-    else:
-        noisy_image = image.copy()
-
-    # Demander le filtre à appliquer
-    filter_choice = int(input("Choisissez le filtre (1: Prewitt, 2: Sobel, 3: Robert): "))
-    if filter_choice == 1:
-        grad_x, grad_y = prewitt(image)
-        noisy_grad_x, noisy_grad_y = prewitt(noisy_image)
-    elif filter_choice == 2:
-        grad_x, grad_y = sobel(image)
-        noisy_grad_x, noisy_grad_y = sobel(noisy_image)
-    elif filter_choice == 3:
-        grad_x, grad_y = robert(image)
-        noisy_grad_x, noisy_grad_y = robert(noisy_image)
-
-    # Calculer les gradients
-    gradient_image = Gradient(grad_x, grad_y)
-    noisy_gradient_image = Gradient(noisy_grad_x, noisy_grad_y)
-
-    # Demander le type de seuillage
-    threshold_choice = int(input("Choisissez le type de seuillage (1: Simple, 2: Hystérésis : "))
-    if threshold_choice == 1:
-        seuil = float(input("Entrez la valeur du seuil (0 à 1): "))
-        binary_gradient_image = SeuilSim(gradient_image, seuil)
-        noisy_binary_gradient_image = SeuilSim(noisy_gradient_image, seuil)
-    elif threshold_choice == 2:
-        seuil_bas = float(input("Entrez la valeur du seuil bas (0 à 1): "))
-        seuil_haut = float(input("Entrez la valeur du seuil haut (0 à 1): "))
-        binary_gradient_image = SeuilHys(gradient_image, seuil_bas, seuil_haut)
-        noisy_binary_gradient_image = SeuilHys(noisy_gradient_image, seuil_bas, seuil_haut)
-  
+        self.title("Image Processing Application")
+        self.geometry("800x600")
         
-    # Demander si on veut appliquer le filtre de Laplace
-    laplace_choice = int(input("Voulez-vous appliquer le filtre de Laplace ? (1: Oui, 2: Non): "))
-    if laplace_choice == 1:
-        sigma = float(input('sigma : '))
-        laplace_image = LOG(image,sigma)
-        noisy_laplace_image = LOG(noisy_image,sigma)
-    else:
-        laplace_image = image
-        noisy_laplace_image = noisy_image
+        # Attributes
+        self.image = None
+        self.processed_image = None
+        self.noisy_image = None
 
-    # Adjust grid size to 2 rows x 6 columns
-    plt.figure(figsize=(18, 8))
-    
-    # Original image and filters
-    plt.subplot(2, 6, 1)
-    plt.title("Image Originale")
-    plt.imshow(image, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 2)
-    plt.title("Filtre Horizontal Original")
-    plt.imshow(grad_x, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 3)
-    plt.title("Filtre Vertical Original")
-    plt.imshow(grad_y, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 4)
-    plt.title("Gradient Original")
-    plt.imshow(gradient_image, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 5)
-    plt.title("Seuillage Original")
-    plt.imshow(binary_gradient_image, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 6)
-    plt.title("Filtre Laplace Original")
-    plt.imshow(laplace_image, cmap="gray")
-    plt.axis("off")
-    
-    # Noisy image and filters
-    plt.subplot(2, 6, 7)
-    plt.title("Image Bruitée")
-    plt.imshow(noisy_image, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 8)
-    plt.title("Filtre Horizontal Bruitée")
-    plt.imshow(noisy_grad_x, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 9)
-    plt.title("Filtre Vertical Bruitée")
-    plt.imshow(noisy_grad_y, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 10)
-    plt.title("Gradient Bruitée")
-    plt.imshow(noisy_gradient_image, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 11)
-    plt.title("Seuillage Bruitée")
-    plt.imshow(noisy_binary_gradient_image, cmap="gray")
-    plt.axis("off")
-    
-    plt.subplot(2, 6, 12)
-    plt.title("Filtre Laplace Bruitée")
-    plt.imshow(noisy_laplace_image, cmap="gray")
-    plt.axis("off")
-    
-    # Layout adjustment
-    plt.tight_layout()
-    plt.show()
+        # Upload Button
+        self.upload_button = ctk.CTkButton(self, text="Upload Image", command=self.upload_image)
+        self.upload_button.pack(pady=10)
+
+        # Noise Options
+        self.noise_label = ctk.CTkLabel(self, text="Choose Noise:")
+        self.noise_label.pack()
+        self.noise_var = ctk.StringVar(value="None")
+        self.noise_menu = ctk.CTkOptionMenu(self, values=["None", "Gaussian", "Salt and Pepper"], variable=self.noise_var)
+        self.noise_menu.pack(pady=5)
+
+        # Noise Parameter
+        self.noise_param_label = ctk.CTkLabel(self, text="Parameter (Variance/Percentage):")
+        self.noise_param_label.pack()
+        self.noise_param_entry = ctk.CTkEntry(self)
+        self.noise_param_entry.pack(pady=5)
+
+        # Filter Options
+        self.filter_label = ctk.CTkLabel(self, text="Choose Filter:")
+        self.filter_label.pack()
+        self.filter_var = ctk.StringVar(value="None")
+        self.filter_menu = ctk.CTkOptionMenu(self, values=["None", "Prewitt", "Sobel", "Robert"], variable=self.filter_var)
+        self.filter_menu.pack(pady=5)
+
+        # Thresholding Options
+        self.threshold_label = ctk.CTkLabel(self, text="Choose Thresholding:")
+        self.threshold_label.pack()
+        self.threshold_var = ctk.StringVar(value="None")
+        self.threshold_menu = ctk.CTkOptionMenu(
+            self, 
+            values=["None", "Simple", "Hysteresis"], 
+            variable=self.threshold_var, 
+            command=self.update_threshold_entries
+        )
+        self.threshold_menu.pack(pady=5)
+
+        # Thresholding Parameters
+        self.threshold_param_label = ctk.CTkLabel(self, text="Threshold Parameters:")
+        self.threshold_param_label.pack()
+        self.threshold_low_entry = ctk.CTkEntry(self, placeholder_text="Low Threshold")
+        self.threshold_low_entry.pack(pady=2)
+        self.threshold_high_entry = ctk.CTkEntry(self, placeholder_text="High Threshold")
+        self.threshold_high_entry.pack(pady=2)
+
+        # Laplace Filter Option
+        self.laplace_label = ctk.CTkLabel(self, text="Apply Laplace Filter:")
+        self.laplace_label.pack()
+        self.laplace_var = ctk.StringVar(value="No")
+        self.laplace_menu = ctk.CTkOptionMenu(self, values=["Yes", "No"], variable=self.laplace_var)
+        self.laplace_menu.pack(pady=5)
+        self.laplace_sigma_entry = ctk.CTkEntry(self, placeholder_text="Sigma")
+        self.laplace_sigma_entry.pack(pady=2)
+
+        # Process Button
+        self.process_button = ctk.CTkButton(self, text="Process Image", command=self.process_image)
+        self.process_button.pack(pady=20)
+
+    def update_threshold_entries(self, choice):
+        """Update the threshold entries based on the thresholding choice."""
+        if choice == "Simple":
+            self.threshold_high_entry.configure(state="disabled")
+        elif choice == "Hysteresis":
+            self.threshold_high_entry.configure(state="normal")
+        else:
+            self.threshold_low_entry.configure(state="disabled")
+            self.threshold_high_entry.configure(state="disabled")
 
 
+    def upload_image(self):
+        file_path = filedialog.askopenfilename(filetypes=[("Image Files", "*.png;*.jpg;*.bmp;*.jpeg")])
+        if file_path:
+            img = Image.open(file_path).convert('L')
+            self.image = np.array(img) / 255.0
+            global image_name
+            image_name = os.path.basename(file_path)  # Extract the image name from the file path
+            
+    def process_image(self):
+        if self.image is None:
+            messagebox.showerror("Error", "Please upload an image first.")
+            return
+
+        # Check noise parameters
+        if  self.noise_var.get() == "None":
+            messagebox.showerror("Error", "Please choose a noise type.")
+            return
+        
+        name,ext = os.path.splitext(image_name) 
+        noise_choice = self.noise_var.get()
+        if noise_choice in ["Gaussian", "Salt and Pepper"]:
+            if not self.noise_param_entry.get():
+                messagebox.showerror("Error", "Please enter a noise parameter.")
+                return
+        if noise_choice == "Gaussian":
+            variance = float(self.noise_param_entry.get())
+            self.noisy_image = gaussien(self.image, variance)
+            cv2.imwrite(f'{noise_choice} , {name} , {variance}{ext}',self.noisy_image*255)
+            plt.figure(figsize=(10, 5))
+            plt.subplot(1, 2, 1)
+            plt.title("Original Image")
+            plt.imshow(self.image, cmap="gray")
+            plt.axis("off")
+
+            plt.subplot(1, 2, 2)
+            plt.title("Noisy Image")
+            plt.imshow(self.noisy_image, cmap="gray")
+            plt.axis("off")
+
+            plt.show()
+        elif noise_choice == "Salt and Pepper":
+            pourcentage = float(self.noise_param_entry.get())
+            self.noisy_image = poivre_sel(self.image, pourcentage)
+               
+            cv2.imwrite(f'{noise_choice} , {name},{pourcentage}{ext}',self.noisy_image*255)
+            plt.figure(figsize=(10, 5))
+            plt.subplot(1, 2, 1)
+            plt.title("Original Image")
+            plt.imshow(self.image, cmap="gray")
+            plt.axis("off")
+
+            plt.subplot(1, 2, 2)
+            plt.title("Noisy Image")
+            plt.imshow(self.noisy_image, cmap="gray")
+            plt.axis("off")
+
+            plt.show()
+        else:
+            self.noisy_image = self.image
+
+        # Apply filter
+        filter_choice = self.filter_var.get()
+        if filter_choice == "Prewitt":
+            grad_x, grad_y = prewitt(self.noisy_image)
+        elif filter_choice == "Sobel":
+            grad_x, grad_y = sobel(self.noisy_image)
+        elif filter_choice == "Robert":
+            grad_x, grad_y = robert(self.noisy_image)
+        else:
+            grad_x, grad_y = None, None
+
+        if grad_x is not None and grad_y is not None:
+            gradient_image = Gradient(grad_x, grad_y)
+            plt.figure(figsize=(15, 5))
+            plt.subplot(1, 3, 1)
+            plt.title(f"Image horizontal de {filter_choice}")
+            plt.imshow(grad_x, cmap="gray")
+            plt.axis("off")
+
+            plt.subplot(1, 3, 2)
+            plt.title(f"Image vertical de {filter_choice}")
+            plt.imshow(grad_y, cmap="gray")
+            plt.axis("off")
+
+            plt.subplot(1, 3, 3)
+            plt.title(f"Gradient de {filter_choice}")
+            plt.imshow(gradient_image, cmap="gray")
+            plt.axis("off")
+
+            plt.show()
+            
+        # Apply thresholding
+        threshold_choice = self.threshold_var.get()
+        if threshold_choice == "Simple":
+            low_threshold = self.threshold_low_entry.get()
+            if not low_threshold:
+                messagebox.showerror("Error", "Please enter the low threshold for Simple thresholding.")
+                return
+            seuil = float(self.threshold_low_entry.get())
+            binary_image = SeuilSim(self.image, seuil)
+            noisy_binary_image = SeuilSim(self.noisy_image, seuil)
+            binary_gradient_image = SeuilSim(gradient_image, seuil)
+            plt.figure(figsize=(12, 8))
+ 
+            
+            plt.subplot(2,3, 1)
+            plt.title("Original Image")
+            plt.imshow(self.image, cmap="gray")
+            plt.axis("off")
+            
+            plt.subplot(2, 3, 2)
+            plt.title("Noisy Image")
+            plt.imshow(self.noisy_image, cmap="gray")
+            plt.axis("off")
+            
+            plt.subplot(2, 3, 3)
+            plt.title("Gradient")
+            plt.imshow(gradient_image, cmap="gray")
+            plt.axis("off")
+
+            plt.subplot(2, 3, 4)
+            plt.title("original Image after SeuilSim")
+            plt.imshow(binary_image, cmap="gray")
+            plt.axis("off")
+            
+            plt.subplot(2, 3, 5)
+            plt.title("Noisy Image after SeuilSim")
+            plt.imshow(noisy_binary_image, cmap="gray")
+            plt.axis("off")
+            
+            plt.subplot(2, 3, 6)
+            plt.title("Gradient Image after SeuilSim")
+            plt.imshow(binary_gradient_image, cmap="gray")
+            plt.axis("off")
+
+            plt.show()
+        elif threshold_choice == "Hysteresis":
+            seuil_bas = float(self.threshold_low_entry.get())
+            seuil_haut = float(self.threshold_high_entry.get())
+            if not seuil_bas or not seuil_haut:
+                messagebox.showerror("Error", "Please enter both low and high thresholds for Hysteresis thresholding.")
+                return
+            binary_gradient_image = SeuilHys(gradient_image, seuil_bas, seuil_haut)
+            binary_image = SeuilHys(self.image, seuil_bas, seuil_haut)
+            noisy_binary_image = SeuilHys(self.noisy_image, seuil_bas, seuil_haut)
+            
+            plt.figure(figsize=(12, 8))            
+            plt.subplot(2,3, 1)
+            plt.title("Original Image")
+            plt.imshow(self.image, cmap="gray")
+            plt.axis("off")
+            
+            plt.subplot(2, 3, 2)
+            plt.title("Noisy Image")
+            plt.imshow(self.noisy_image, cmap="gray")
+            plt.axis("off")
+            
+            plt.subplot(2, 3, 3)
+            plt.title("Gradient")
+            plt.imshow(gradient_image, cmap="gray")
+            plt.axis("off")
+
+            plt.subplot(2, 3, 4)
+            plt.title("original Image after SeuilHys")
+            plt.imshow(binary_image, cmap="gray")
+            plt.axis("off")
+            
+            plt.subplot(2, 3, 5)
+            plt.title("Noisy Image after SeuilHys")
+            plt.imshow(noisy_binary_image, cmap="gray")
+            plt.axis("off")
+            
+            plt.subplot(2, 3, 6)
+            plt.title("Gradient Image after SeuilSim")
+            plt.imshow(binary_gradient_image, cmap="gray")
+            plt.axis("off")
+
+            plt.show()
+
+        # Apply Laplace filter
+        if self.laplace_var.get() == "Yes":
+            sigma = float(self.laplace_sigma_entry.get())
+            if not sigma:
+                messagebox.showerror("Error", "Please enter a sigma value for the Laplace filter.")
+                return
+            laplace_image = LOG(self.image, sigma)
+
+        # Display the processed image (example for Laplace image)
+        if self.laplace_var.get() == "Yes":
+            plt.figure(figsize=(10, 5))
+            plt.subplot(1, 2, 1)
+            plt.title("Original Image")
+            plt.imshow(self.image, cmap="gray")
+            plt.axis("off")
+
+            plt.subplot(1, 2, 2)
+            plt.title("Laplace Image")
+            plt.imshow(laplace_image, cmap="gray")
+            plt.axis("off")
+
+            plt.show()
 
 if __name__ == "__main__":
-    image_path = 'cameraman.jpg'  # Chemin de votre image
-    main(image_path)
+    app = ImageProcessorApp()
+    app.mainloop()
+
+    # # Adjust grid size to 2 rows x 6 columns
+    # plt.figure(figsize=(18, 8))
+    
+    # # Original image and filters
+    # plt.subplot(2, 6, 1)
+    # plt.title("Image Originale")
+    # plt.imshow(image, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 2)
+    # plt.title("Filtre Horizontal Original")
+    # plt.imshow(grad_x, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 3)
+    # plt.title("Filtre Vertical Original")
+    # plt.imshow(grad_y, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 4)
+    # plt.title("Gradient Original")
+    # plt.imshow(gradient_image, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 5)
+    # plt.title("Seuillage Original")
+    # plt.imshow(binary_gradient_image, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 6)
+    # plt.title("Filtre Laplace Original")
+    # plt.imshow(laplace_image, cmap="gray")
+    # plt.axis("off")
+    
+    # # Noisy image and filters
+    # plt.subplot(2, 6, 7)
+    # plt.title("Image Bruitée")
+    # plt.imshow(noisy_image, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 8)
+    # plt.title("Filtre Horizontal Bruitée")
+    # plt.imshow(noisy_grad_x, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 9)
+    # plt.title("Filtre Vertical Bruitée")
+    # plt.imshow(noisy_grad_y, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 10)
+    # plt.title("Gradient Bruitée")
+    # plt.imshow(noisy_gradient_image, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 11)
+    # plt.title("Seuillage Bruitée")
+    # plt.imshow(noisy_binary_gradient_image, cmap="gray")
+    # plt.axis("off")
+    
+    # plt.subplot(2, 6, 12)
+    # plt.title("Filtre Laplace Bruitée")
+    # plt.imshow(noisy_laplace_image, cmap="gray")
+    # plt.axis("off")
+    
+    # # Layout adjustment
+    # plt.tight_layout()
+    # plt.show()
+
+
+
+# if __name__ == "__main__":
+#     image_path = 'cameraman.jpg'  # Chemin de votre image
+#     main(image_path)
