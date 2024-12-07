@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
-
-
+import cv2 as cv
+from collections import deque
 # Fonction pour ajouter un bruit gaussien
 def gaussien(image, variance):
     mean = 0
@@ -92,35 +92,70 @@ def SeuilSim(image, seuil):
     binary_image = np.zeros_like(image)
     binary_image[image > seuil] = 1
     return (binary_image * 255).astype(np.uint8)
+    # return cv.threshold(image, seuil, 1, cv.THRESH_BINARY)[1]
 
 
-# Fonction de seuillage par hystérésis
+from collections import deque
+import numpy as np
+
 def SeuilHys(image, seuil_bas, seuil_haut):
-    binary_image = np.zeros_like(image)
+    # Initialize binary image and visited matrix
+    binary_image = np.zeros_like(image, dtype=np.uint8)
     binary_image[image > seuil_haut] = 1
     visited = np.zeros_like(image, dtype=bool)
-    queue = []
+    
+    # Initialize queue for BFS
+    queue = deque()
 
+    # Enqueue all strong edges (above the high threshold)
     for i in range(1, image.shape[0] - 1):
         for j in range(1, image.shape[1] - 1):
             if binary_image[i, j] == 1 and not visited[i, j]:
                 queue.append((i, j))
 
+    # BFS for weak edge propagation
     while queue:
-        x, y = queue.pop(0)
+        x, y = queue.popleft()
         if visited[x, y]:
             continue
         visited[x, y] = True
-        if image[x, y] > seuil_bas:
+        # Check if the current pixel qualifies as a weak edge
+        if seuil_bas < image[x, y] <= seuil_haut:
             binary_image[x, y] = 1
-            for dx in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
-                    nx, ny = x + dx, y + dy
-                    if 0 <= nx < image.shape[0] and 0 <= ny < image.shape[1]:
-                        queue.append((nx, ny))
-
+            # Propagate to neighbors
+            for dx, dy in [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]:
+                nx, ny = x + dx, y + dy
+                if 0 <= nx < image.shape[0] and 0 <= ny < image.shape[1]:
+                    queue.append((nx, ny))
+    
     return binary_image
 
+    # return cv.Canny((image * 255).astype(np.uint8), seuil_bas, seuil_haut)
+
+def LOG(img,sigma):
+    height, width = img.shape[:2]
+    image = gaussien(img, sigma)
+    laplace = np.array([[1., 1., 1.],
+                        [1., -8., 1.],
+                        [1., 1., 1.]])
+
+    newImage = np.zeros((height, width))
+    for i in range(1, height - 1):
+        for j in range(1, width - 1):
+            imgPlacien =    (laplace[0, 0] * image[i - 1, j - 1]) + \
+                            (laplace[0, 1] * image[i - 1, j]) + \
+                            (laplace[0, 2] * image[i - 1, j + 1]) + \
+                            (laplace[1, 0] * image[i, j - 1]) + \
+                            (laplace[1, 1] * image[i, j]) + \
+                            (laplace[1, 2] * image[i, j + 1]) + \
+                            (laplace[2, 0] * image[i + 1, j - 1]) + \
+                            (laplace[2, 1] * image[i + 1, j]) + \
+                            (laplace[2, 2] * image[i + 1, j + 1])
+
+            newImage[i - 1, j - 1] = abs(imgPlacien)
+
+    return newImage
+    # return cv.Laplacian(image, cv.CV_64F)
 
 # Fonction principale
 def main(image_path):
@@ -155,7 +190,7 @@ def main(image_path):
     noisy_gradient_image = Gradient(noisy_grad_x, noisy_grad_y)
 
     # Demander le type de seuillage
-    threshold_choice = int(input("Choisissez le type de seuillage (1: Simple, 2: Hystérésis): "))
+    threshold_choice = int(input("Choisissez le type de seuillage (1: Simple, 2: Hystérésis : "))
     if threshold_choice == 1:
         seuil = float(input("Entrez la valeur du seuil (0 à 1): "))
         binary_gradient_image = SeuilSim(gradient_image, seuil)
@@ -165,65 +200,89 @@ def main(image_path):
         seuil_haut = float(input("Entrez la valeur du seuil haut (0 à 1): "))
         binary_gradient_image = SeuilHys(gradient_image, seuil_bas, seuil_haut)
         noisy_binary_gradient_image = SeuilHys(noisy_gradient_image, seuil_bas, seuil_haut)
+  
+        
+    # Demander si on veut appliquer le filtre de Laplace
+    laplace_choice = int(input("Voulez-vous appliquer le filtre de Laplace ? (1: Oui, 2: Non): "))
+    if laplace_choice == 1:
+        sigma = float(input('sigma : '))
+        laplace_image = LOG(image,sigma)
+        noisy_laplace_image = LOG(noisy_image,sigma)
+    else:
+        laplace_image = image
+        noisy_laplace_image = noisy_image
 
-    # Affichage des résultats
-    plt.figure(figsize=(15, 10))
-
-    # Image originale
-    plt.subplot(2, 5, 1)
+    # Adjust grid size to 2 rows x 6 columns
+    plt.figure(figsize=(18, 8))
+    
+    # Original image and filters
+    plt.subplot(2, 6, 1)
     plt.title("Image Originale")
     plt.imshow(image, cmap="gray")
     plt.axis("off")
-
-    plt.subplot(2, 5, 2)
+    
+    plt.subplot(2, 6, 2)
     plt.title("Filtre Horizontal Original")
     plt.imshow(grad_x, cmap="gray")
     plt.axis("off")
-
-    plt.subplot(2, 5, 3)
+    
+    plt.subplot(2, 6, 3)
     plt.title("Filtre Vertical Original")
     plt.imshow(grad_y, cmap="gray")
     plt.axis("off")
-
-    plt.subplot(2, 5, 4)
+    
+    plt.subplot(2, 6, 4)
     plt.title("Gradient Original")
     plt.imshow(gradient_image, cmap="gray")
     plt.axis("off")
-
-    plt.subplot(2, 5, 5)
+    
+    plt.subplot(2, 6, 5)
     plt.title("Seuillage Original")
     plt.imshow(binary_gradient_image, cmap="gray")
     plt.axis("off")
-    # Image bruitée
-    plt.subplot(2, 5, 6)
+    
+    plt.subplot(2, 6, 6)
+    plt.title("Filtre Laplace Original")
+    plt.imshow(laplace_image, cmap="gray")
+    plt.axis("off")
+    
+    # Noisy image and filters
+    plt.subplot(2, 6, 7)
     plt.title("Image Bruitée")
     plt.imshow(noisy_image, cmap="gray")
     plt.axis("off")
-
-    plt.subplot(2, 5, 7)
+    
+    plt.subplot(2, 6, 8)
     plt.title("Filtre Horizontal Bruitée")
     plt.imshow(noisy_grad_x, cmap="gray")
     plt.axis("off")
-
-    plt.subplot(2, 5, 8)
+    
+    plt.subplot(2, 6, 9)
     plt.title("Filtre Vertical Bruitée")
     plt.imshow(noisy_grad_y, cmap="gray")
     plt.axis("off")
-
-    plt.subplot(2, 5, 9)
+    
+    plt.subplot(2, 6, 10)
     plt.title("Gradient Bruitée")
     plt.imshow(noisy_gradient_image, cmap="gray")
     plt.axis("off")
-
-    plt.subplot(2, 5, 10)
+    
+    plt.subplot(2, 6, 11)
     plt.title("Seuillage Bruitée")
     plt.imshow(noisy_binary_gradient_image, cmap="gray")
     plt.axis("off")
-
+    
+    plt.subplot(2, 6, 12)
+    plt.title("Filtre Laplace Bruitée")
+    plt.imshow(noisy_laplace_image, cmap="gray")
+    plt.axis("off")
+    
+    # Layout adjustment
     plt.tight_layout()
     plt.show()
 
 
+
 if __name__ == "__main__":
-    image_path = 'prj.bmp'  # Chemin de votre image
+    image_path = 'cameraman.jpg'  # Chemin de votre image
     main(image_path)
