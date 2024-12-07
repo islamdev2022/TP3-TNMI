@@ -98,8 +98,6 @@ def SeuilSim(image, seuil):
     # return cv.threshold(image, seuil, 1, cv.THRESH_BINARY)[1]
 
 
-from collections import deque
-import numpy as np
 
 def SeuilHys(image, seuil_bas, seuil_haut):
     # Initialize binary image and visited matrix
@@ -134,28 +132,40 @@ def SeuilHys(image, seuil_bas, seuil_haut):
     return binary_image
 
     # return cv.Canny((image * 255).astype(np.uint8), seuil_bas, seuil_haut)
+    
+def log_kernel(sigma):
+    
+    # Create the grid for x and y coordinates
+    x, y = np.meshgrid(np.arange(-1, 2), np.arange(-1, 2))
+    
+    # Compute the Laplacian of Gaussian
+    norm = (x**2 + y**2) / (2 * sigma**2)
+    gaussian = np.exp(norm) * 4 / np.sqrt(2 * np.pi * sigma**2)
+    laplacian = (norm - 1) * gaussian
+    
+    # Normalize the kernel to have a sum of zero
+    log_kernel = laplacian - laplacian.mean()
+    
+    return log_kernel
 
-def LOG(img,sigma):
+def LOG(img, sigma):
     height, width = img.shape[:2]
-    image = gaussien(img, sigma)
-    laplace = np.array([[1., 1., 1.],
-                        [1., -8., 1.],
-                        [1., 1., 1.]])
+    kernel = log_kernel(sigma)  # The LoG kernel
+    kernel_size = kernel.shape[0]
+    offset = kernel_size // 2
 
-    newImage = np.zeros((height, width))
-    for i in range(1, height - 1):
-        for j in range(1, width - 1):
-            imgPlacien =    (laplace[0, 0] * image[i - 1, j - 1]) + \
-                            (laplace[0, 1] * image[i - 1, j]) + \
-                            (laplace[0, 2] * image[i - 1, j + 1]) + \
-                            (laplace[1, 0] * image[i, j - 1]) + \
-                            (laplace[1, 1] * image[i, j]) + \
-                            (laplace[1, 2] * image[i, j + 1]) + \
-                            (laplace[2, 0] * image[i + 1, j - 1]) + \
-                            (laplace[2, 1] * image[i + 1, j]) + \
-                            (laplace[2, 2] * image[i + 1, j + 1])
+    # Initialize the output image
+    newImage = np.zeros_like(img)
 
-            newImage[i - 1, j - 1] = abs(imgPlacien)
+    # Apply the convolution operation
+    for i in range(offset, height - offset):
+        for j in range(offset, width - offset):
+            # Extract the region of interest
+            region = img[i-offset:i+offset+1, j-offset:j+offset+1]
+            # Apply the kernel (element-wise multiplication and sum)
+            imgLaplace = np.sum(region * kernel)
+            # Store the result in the output image
+            newImage[i, j] = abs(imgLaplace)
 
     return newImage
     # return cv.Laplacian(image, cv.CV_64F)
@@ -166,7 +176,7 @@ class ImageProcessorApp(ctk.CTk):
         super().__init__()
 
         self.title("Image Processing Application")
-        self.geometry("800x600")
+        self.geometry("800x800")
         
         # Attributes
         self.image = None
@@ -189,6 +199,9 @@ class ImageProcessorApp(ctk.CTk):
         self.noise_param_label.pack()
         self.noise_param_entry = ctk.CTkEntry(self)
         self.noise_param_entry.pack(pady=5)
+        
+        self.noise_button = ctk.CTkButton(self, text="Add Noise", command=self.process_noise_image)
+        self.noise_button.pack(pady=10)
 
         # Filter Options
         self.filter_label = ctk.CTkLabel(self, text="Choose Filter:")
@@ -205,16 +218,16 @@ class ImageProcessorApp(ctk.CTk):
             self, 
             values=["None", "Simple", "Hysteresis"], 
             variable=self.threshold_var, 
-            command=self.update_threshold_entries
+            command=self.update_seuillage_entries
         )
         self.threshold_menu.pack(pady=5)
 
         # Thresholding Parameters
-        self.threshold_param_label = ctk.CTkLabel(self, text="Threshold Parameters:")
+        self.threshold_param_label = ctk.CTkLabel(self, text="Parameters DE Seuillage:")
         self.threshold_param_label.pack()
-        self.threshold_low_entry = ctk.CTkEntry(self, placeholder_text="Low Threshold")
+        self.threshold_low_entry = ctk.CTkEntry(self, placeholder_text="seuil_bas")
         self.threshold_low_entry.pack(pady=2)
-        self.threshold_high_entry = ctk.CTkEntry(self, placeholder_text="High Threshold")
+        self.threshold_high_entry = ctk.CTkEntry(self, placeholder_text="seuil_haut")
         self.threshold_high_entry.pack(pady=2)
 
         # Laplace Filter Option
@@ -230,8 +243,7 @@ class ImageProcessorApp(ctk.CTk):
         self.process_button = ctk.CTkButton(self, text="Process Image", command=self.process_image)
         self.process_button.pack(pady=20)
 
-    def update_threshold_entries(self, choice):
-        """Update the threshold entries based on the thresholding choice."""
+    def update_seuillage_entries(self, choice):
         if choice == "Simple":
             self.threshold_high_entry.configure(state="disabled")
         elif choice == "Hysteresis":
@@ -249,7 +261,7 @@ class ImageProcessorApp(ctk.CTk):
             global image_name
             image_name = os.path.basename(file_path)  # Extract the image name from the file path
             
-    def process_image(self):
+    def process_noise_image(self):
         if self.image is None:
             messagebox.showerror("Error", "Please upload an image first.")
             return
@@ -260,6 +272,7 @@ class ImageProcessorApp(ctk.CTk):
             return
         
         name,ext = os.path.splitext(image_name) 
+        global noise_choice
         noise_choice = self.noise_var.get()
         if noise_choice in ["Gaussian", "Salt and Pepper"]:
             if not self.noise_param_entry.get():
@@ -273,12 +286,10 @@ class ImageProcessorApp(ctk.CTk):
             plt.subplot(1, 2, 1)
             plt.title("Original Image")
             plt.imshow(self.image, cmap="gray")
-            plt.axis("off")
 
             plt.subplot(1, 2, 2)
-            plt.title("Noisy Image")
+            plt.title(f"Noisy Image {noise_choice}")
             plt.imshow(self.noisy_image, cmap="gray")
-            plt.axis("off")
 
             plt.show()
         elif noise_choice == "Salt and Pepper":
@@ -290,45 +301,47 @@ class ImageProcessorApp(ctk.CTk):
             plt.subplot(1, 2, 1)
             plt.title("Original Image")
             plt.imshow(self.image, cmap="gray")
-            plt.axis("off")
 
             plt.subplot(1, 2, 2)
-            plt.title("Noisy Image")
+            plt.title(f"Noisy Image {noise_choice}")
             plt.imshow(self.noisy_image, cmap="gray")
-            plt.axis("off")
 
             plt.show()
         else:
             self.noisy_image = self.image
+            
+    def process_image(self):
 
         # Apply filter
         filter_choice = self.filter_var.get()
         if filter_choice == "Prewitt":
-            grad_x, grad_y = prewitt(self.noisy_image)
+            grad_x, grad_y = prewitt(self.image)
         elif filter_choice == "Sobel":
-            grad_x, grad_y = sobel(self.noisy_image)
+            grad_x, grad_y = sobel(self.image)
         elif filter_choice == "Robert":
-            grad_x, grad_y = robert(self.noisy_image)
+            grad_x, grad_y = robert(self.image)
         else:
             grad_x, grad_y = None, None
 
         if grad_x is not None and grad_y is not None:
             gradient_image = Gradient(grad_x, grad_y)
             plt.figure(figsize=(15, 5))
-            plt.subplot(1, 3, 1)
+            
+            plt.subplot(1,4,4)
+            plt.title("Image original")
+            plt.imshow(self.image, cmap="gray")
+            
+            plt.subplot(1, 4, 1)
             plt.title(f"Image horizontal de {filter_choice}")
             plt.imshow(grad_x, cmap="gray")
-            plt.axis("off")
 
-            plt.subplot(1, 3, 2)
+            plt.subplot(1, 4, 2)
             plt.title(f"Image vertical de {filter_choice}")
             plt.imshow(grad_y, cmap="gray")
-            plt.axis("off")
 
-            plt.subplot(1, 3, 3)
+            plt.subplot(1, 4, 3)
             plt.title(f"Gradient de {filter_choice}")
             plt.imshow(gradient_image, cmap="gray")
-            plt.axis("off")
 
             plt.show()
             
@@ -344,37 +357,36 @@ class ImageProcessorApp(ctk.CTk):
             noisy_binary_image = SeuilSim(self.noisy_image, seuil)
             binary_gradient_image = SeuilSim(gradient_image, seuil)
             plt.figure(figsize=(12, 8))
- 
             
             plt.subplot(2,3, 1)
             plt.title("Original Image")
             plt.imshow(self.image, cmap="gray")
-            plt.axis("off")
+           
             
             plt.subplot(2, 3, 2)
-            plt.title("Noisy Image")
+            plt.title(f"Noisy Image{noise_choice}")
             plt.imshow(self.noisy_image, cmap="gray")
-            plt.axis("off")
+           
             
             plt.subplot(2, 3, 3)
             plt.title("Gradient")
             plt.imshow(gradient_image, cmap="gray")
-            plt.axis("off")
+           
 
             plt.subplot(2, 3, 4)
-            plt.title("original Image after SeuilSim")
+            plt.title(f"original Image after SeuilSim {threshold_choice}")
             plt.imshow(binary_image, cmap="gray")
-            plt.axis("off")
+            
             
             plt.subplot(2, 3, 5)
-            plt.title("Noisy Image after SeuilSim")
+            plt.title(f"Noisy Image after Seuillage {threshold_choice}")
             plt.imshow(noisy_binary_image, cmap="gray")
-            plt.axis("off")
+           
             
             plt.subplot(2, 3, 6)
-            plt.title("Gradient Image after SeuilSim")
+            plt.title(f"Gradient Image after Seuillage {threshold_choice}")
             plt.imshow(binary_gradient_image, cmap="gray")
-            plt.axis("off")
+            
 
             plt.show()
         elif threshold_choice == "Hysteresis":
@@ -391,32 +403,32 @@ class ImageProcessorApp(ctk.CTk):
             plt.subplot(2,3, 1)
             plt.title("Original Image")
             plt.imshow(self.image, cmap="gray")
-            plt.axis("off")
+            
             
             plt.subplot(2, 3, 2)
-            plt.title("Noisy Image")
+            plt.title(f"Noisy Image {noise_choice}")
             plt.imshow(self.noisy_image, cmap="gray")
-            plt.axis("off")
+            
             
             plt.subplot(2, 3, 3)
             plt.title("Gradient")
             plt.imshow(gradient_image, cmap="gray")
-            plt.axis("off")
+           
 
             plt.subplot(2, 3, 4)
-            plt.title("original Image after SeuilHys")
+            plt.title(f"original Image after Seuillage {threshold_choice}")
             plt.imshow(binary_image, cmap="gray")
-            plt.axis("off")
+           
             
             plt.subplot(2, 3, 5)
-            plt.title("Noisy Image after SeuilHys")
+            plt.title(f"Noisy Image after Seuillage {threshold_choice}")
             plt.imshow(noisy_binary_image, cmap="gray")
-            plt.axis("off")
+        
             
             plt.subplot(2, 3, 6)
-            plt.title("Gradient Image after SeuilSim")
+            plt.title(f"Gradient Image after SeuilSim {threshold_choice}")
             plt.imshow(binary_gradient_image, cmap="gray")
-            plt.axis("off")
+            
 
             plt.show()
 
@@ -434,12 +446,12 @@ class ImageProcessorApp(ctk.CTk):
             plt.subplot(1, 2, 1)
             plt.title("Original Image")
             plt.imshow(self.image, cmap="gray")
-            plt.axis("off")
+           
 
             plt.subplot(1, 2, 2)
-            plt.title("Laplace Image")
+            plt.title("Log Image")
             plt.imshow(laplace_image, cmap="gray")
-            plt.axis("off")
+            
 
             plt.show()
 
