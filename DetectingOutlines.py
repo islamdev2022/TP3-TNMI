@@ -157,18 +157,21 @@ def LOG(img, sigma):
     # Initialize the output image
     newImage = np.zeros_like(img)
 
-    # Apply the convolution operation
+    # Apply the convolution operation (integrating the convolve logic)
     for i in range(offset, height - offset):
         for j in range(offset, width - offset):
-            # Extract the region of interest
-            region = img[i-offset:i+offset+1, j-offset:j+offset+1]
-            # Apply the kernel (element-wise multiplication and sum)
-            imgLaplace = np.sum(region * kernel)
+            # Element-wise multiplication and summation
+            if kernel_size % 2 == 0:
+                area = img[i:i+offset+1, j:j+offset+1]
+            else:
+                area = img[i-offset:i+offset+1, j-offset:j+offset+1]
+
+            imgLaplace = np.sum(kernel * area)
             # Store the result in the output image
             newImage[i, j] = abs(imgLaplace)
 
     return newImage
-    # return cv.Laplacian(image, cv.CV_64F)
+
 
 # Main GUI
 class ImageProcessorApp(ctk.CTk):
@@ -200,7 +203,7 @@ class ImageProcessorApp(ctk.CTk):
         self.noise_param_entry = ctk.CTkEntry(self)
         self.noise_param_entry.pack(pady=5)
         
-        self.noise_button = ctk.CTkButton(self, text="Add Noise", command=self.process_noise_image)
+        self.noise_button = ctk.CTkButton(self, text="Add Noise To Image and save it", command=self.process_noise_image)
         self.noise_button.pack(pady=10)
 
         # Filter Options
@@ -209,6 +212,12 @@ class ImageProcessorApp(ctk.CTk):
         self.filter_var = ctk.StringVar(value="None")
         self.filter_menu = ctk.CTkOptionMenu(self, values=["None", "Prewitt", "Sobel", "Robert"], variable=self.filter_var)
         self.filter_menu.pack(pady=5)
+    
+        self.filter_button_noise = ctk.CTkButton(self, text="Apply Filter on noise Image", command=self.filter_Image_noise)
+        self.filter_button_noise.pack(pady=10)
+        
+        self.filter_button_original = ctk.CTkButton(self, text="Apply Filter on Original Image", command= self.filter_Image_original)
+        self.filter_button_original.pack(pady=10)
 
         # Thresholding Options
         self.threshold_label = ctk.CTkLabel(self, text="Choose Thresholding:")
@@ -310,26 +319,33 @@ class ImageProcessorApp(ctk.CTk):
         else:
             self.noisy_image = self.image
             
-    def process_image(self):
-
+    def filter_Image_noise(self):
+        # Ensure an image is provided
+        if self.noisy_image is None:
+            messagebox.showerror("Error", "No noise image available for filtering.")
+            return
         # Apply filter
         filter_choice = self.filter_var.get()
+        if filter_choice == "None":
+            messagebox.showerror("Error", "Please choose a filter.")
+            return
         if filter_choice == "Prewitt":
-            grad_x, grad_y = prewitt(self.image)
+            grad_x, grad_y = prewitt(self.noisy_image)
         elif filter_choice == "Sobel":
-            grad_x, grad_y = sobel(self.image)
+            grad_x, grad_y = sobel(self.noisy_image)
         elif filter_choice == "Robert":
-            grad_x, grad_y = robert(self.image)
+            grad_x, grad_y = robert(self.noisy_image)
         else:
             grad_x, grad_y = None, None
 
         if grad_x is not None and grad_y is not None:
+            global gradient_image
             gradient_image = Gradient(grad_x, grad_y)
             plt.figure(figsize=(15, 5))
             
             plt.subplot(1,4,4)
             plt.title("Image original")
-            plt.imshow(self.image, cmap="gray")
+            plt.imshow(self.noisy_image, cmap="gray")
             
             plt.subplot(1, 4, 1)
             plt.title(f"Image horizontal de {filter_choice}")
@@ -344,6 +360,8 @@ class ImageProcessorApp(ctk.CTk):
             plt.imshow(gradient_image, cmap="gray")
 
             plt.show()
+            
+    def process_image(self):
             
         # Apply thresholding
         threshold_choice = self.threshold_var.get()
