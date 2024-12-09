@@ -147,109 +147,135 @@ def log_kernel(sigma):
     log_kernel = laplacian - laplacian.mean()
     
     return log_kernel
+def convolve(image, kernel):
+    rows = image.shape[0]
+    cols = image.shape[1]
+    pad = kernel.shape[0] // 2
+    output = np.zeros_like(image)
 
-def LOG(img, sigma):
-    height, width = img.shape[:2]
-    kernel = log_kernel(sigma)  # The LoG kernel
-    kernel_size = kernel.shape[0]
-    offset = kernel_size // 2
-
-    # Initialize the output image
-    newImage = np.zeros_like(img)
-
-    # Apply the convolution operation (integrating the convolve logic)
-    for i in range(offset, height - offset):
-        for j in range(offset, width - offset):
-            # Element-wise multiplication and summation
-            if kernel_size % 2 == 0:
-                area = img[i:i+offset+1, j:j+offset+1]
+    for i in range(pad, rows-pad):
+        for j in range(pad, cols-pad):
+            if kernel.shape[0] % 2 == 0:
+                area = image[i:i+pad+1, j:j+pad+1]
             else:
-                area = img[i-offset:i+offset+1, j-offset:j+offset+1]
+                area = image[i-1:i+2, j-1:j+2]
+            output[i, j] = np.sum(kernel * area)
 
-            imgLaplace = np.sum(kernel * area)
-            # Store the result in the output image
-            newImage[i, j] = abs(imgLaplace)
+    return output
 
-    return newImage
+
+def LOG(image: Image.Image, sigma):
+    laplacian_kernel = log_kernel(float(sigma))
+    image_array = np.array(image)
+    grad_arr = convolve(image_array, laplacian_kernel)
+
+    # Handle invalid values
+    grad_arr = np.nan_to_num(grad_arr)  # Replace NaN with 0
+    grad_arr = np.clip(grad_arr, 0, 255)  # Clip values to [0, 255]
+
+    # Convert to uint8 and create an image
+    grad = Image.fromarray(grad_arr.astype(np.uint8))
+
+    return grad
 
 
 # Main GUI
-class ImageProcessorApp(ctk.CTk):
+class ImageProcessingApp(ctk.CTk):
     def __init__(self):
         super().__init__()
 
+        # Window Configuration
         self.title("Image Processing Application")
         self.geometry("800x800")
-        
+        self.configure(bg_color="lightgrey")
+
+        # Scrollable Frame
+        self.scrollable_frame = ctk.CTkScrollableFrame(self, width=780, height=780)
+        self.scrollable_frame.pack(pady=10, padx=10, fill="both", expand=True)
+
         # Attributes
         self.image = None
         self.processed_image = None
         self.noisy_image = None
 
-        # Upload Button
-        self.upload_button = ctk.CTkButton(self, text="Upload Image", command=self.upload_image)
+        # Section: Title
+        self.title_label = ctk.CTkLabel(self.scrollable_frame, text="Image Processing Application", font=("Arial", 20, "bold"))
+        self.title_label.pack(pady=20)
+
+        # Section: Upload Image
+        upload_frame = ctk.CTkFrame(self.scrollable_frame, corner_radius=10, border_width=2)
+        upload_frame.pack(pady=20, padx=20, fill="x")
+        upload_label = ctk.CTkLabel(upload_frame, text="Upload Image", font=("Arial", 16))
+        upload_label.pack(pady=5)
+        self.upload_button = ctk.CTkButton(upload_frame, text="Choose File", command=self.upload_image)
         self.upload_button.pack(pady=10)
 
-        # Noise Options
-        self.noise_label = ctk.CTkLabel(self, text="Choose Noise:")
-        self.noise_label.pack()
+        # Section: Noise Options
+        noise_frame = ctk.CTkFrame(self.scrollable_frame, corner_radius=10, border_width=2)
+        noise_frame.pack(pady=20, padx=20, fill="x")
+        noise_label = ctk.CTkLabel(noise_frame, text="Add Noise to Image", font=("Arial", 16))
+        noise_label.pack(pady=5)
+
         self.noise_var = ctk.StringVar(value="None")
-        self.noise_menu = ctk.CTkOptionMenu(self, values=["None", "Gaussian", "Salt and Pepper"], variable=self.noise_var)
+        self.noise_menu = ctk.CTkOptionMenu(noise_frame, values=["None", "Gaussian", "Salt and Pepper"], variable=self.noise_var)
         self.noise_menu.pack(pady=5)
 
-        # Noise Parameter
-        self.noise_param_label = ctk.CTkLabel(self, text="Parameter (Variance/Percentage):")
-        self.noise_param_label.pack()
-        self.noise_param_entry = ctk.CTkEntry(self)
+        self.noise_param_entry = ctk.CTkEntry(noise_frame, placeholder_text="Parameter (Variance/Percentage)")
         self.noise_param_entry.pack(pady=5)
         
-        self.noise_button = ctk.CTkButton(self, text="Add Noise To Image and save it", command=self.process_noise_image)
+        self.noise_button = ctk.CTkButton(noise_frame, text="Apply Noise", command=self.process_noise_image)
         self.noise_button.pack(pady=10)
 
-        # Filter Options
-        self.filter_label = ctk.CTkLabel(self, text="Choose Filter:")
-        self.filter_label.pack()
-        self.filter_var = ctk.StringVar(value="None")
-        self.filter_menu = ctk.CTkOptionMenu(self, values=["None", "Prewitt", "Sobel", "Robert"], variable=self.filter_var)
-        self.filter_menu.pack(pady=5)
-    
-        self.filter_button_noise = ctk.CTkButton(self, text="Apply Filter on noise Image", command=self.filter_Image_noise)
-        self.filter_button_noise.pack(pady=10)
-        
-        self.filter_button_original = ctk.CTkButton(self, text="Apply Filter on Original Image", command= self.filter_Image_original)
-        self.filter_button_original.pack(pady=10)
+        # Section: Filters
+        filter_frame = ctk.CTkFrame(self.scrollable_frame, corner_radius=10, border_width=2)
+        filter_frame.pack(pady=20, padx=20, fill="x")
+        filter_label = ctk.CTkLabel(filter_frame, text="Apply Filters", font=("Arial", 16))
+        filter_label.pack(pady=5)
 
-        # Thresholding Options
-        self.threshold_label = ctk.CTkLabel(self, text="Choose Thresholding:")
-        self.threshold_label.pack()
+        self.filter_var = ctk.StringVar(value="None")
+        self.filter_menu = ctk.CTkOptionMenu(filter_frame, values=["None", "Prewitt", "Sobel", "Robert"], variable=self.filter_var)
+        self.filter_menu.pack(pady=5)
+
+        self.filter_button_noise = ctk.CTkButton(filter_frame, text="Filter Noisy Image", command=self.filter_Image_noise)
+        self.filter_button_noise.pack(pady=5)
+        self.filter_button_original = ctk.CTkButton(filter_frame, text="Filter Original Image", command=self.filter_Image_original)
+        self.filter_button_original.pack(pady=5)
+
+        # Section: Thresholding
+        threshold_frame = ctk.CTkFrame(self.scrollable_frame, corner_radius=10, border_width=2)
+        threshold_frame.pack(pady=20, padx=20, fill="x")
+        threshold_label = ctk.CTkLabel(threshold_frame, text="Thresholding Options", font=("Arial", 16))
+        threshold_label.pack(pady=5)
         self.threshold_var = ctk.StringVar(value="None")
         self.threshold_menu = ctk.CTkOptionMenu(
-            self, 
-            values=["None", "Simple", "Hysteresis"], 
-            variable=self.threshold_var, 
-            command=self.update_seuillage_entries
+        threshold_frame,
+        values=["None", "Simple", "Hysteresis"],             
+        variable=self.threshold_var, 
+        command=self.update_seuillage_entries
         )
+
         self.threshold_menu.pack(pady=5)
 
-        # Thresholding Parameters
-        self.threshold_param_label = ctk.CTkLabel(self, text="Parameters DE Seuillage:")
-        self.threshold_param_label.pack()
-        self.threshold_low_entry = ctk.CTkEntry(self, placeholder_text="seuil_bas")
-        self.threshold_low_entry.pack(pady=2)
-        self.threshold_high_entry = ctk.CTkEntry(self, placeholder_text="seuil_haut")
-        self.threshold_high_entry.pack(pady=2)
+        self.threshold_low_entry = ctk.CTkEntry(threshold_frame, placeholder_text="Low Threshold")
+        self.threshold_low_entry.pack(pady=5)
+        self.threshold_high_entry = ctk.CTkEntry(threshold_frame, placeholder_text="High Threshold")
+        self.threshold_high_entry.pack(pady=5)
 
-        # Laplace Filter Option
-        self.laplace_label = ctk.CTkLabel(self, text="Apply Laplace Filter:")
-        self.laplace_label.pack()
-        self.laplace_var = ctk.StringVar(value="No")
-        self.laplace_menu = ctk.CTkOptionMenu(self, values=["Yes", "No"], variable=self.laplace_var)
-        self.laplace_menu.pack(pady=5)
-        self.laplace_sigma_entry = ctk.CTkEntry(self, placeholder_text="Sigma")
+        self.threshold_button = ctk.CTkButton(threshold_frame, text="Apply on Noisy Image", command=lambda: self.seuillage_on_gradient(gradient_image_bruit))
+        self.threshold_button.pack(pady=5)
+        self.threshold_button_original = ctk.CTkButton(threshold_frame, text="Apply on Original Image", command=lambda: self.seuillage_on_gradient(gradient_image_original))
+        self.threshold_button_original.pack(pady=5)
+
+        # Section: Log Image
+        
+        log_frame = ctk.CTkFrame(self.scrollable_frame, corner_radius=10, border_width=2)
+        log_frame.pack(pady=20, padx=20, fill="x")
+        log_label = ctk.CTkLabel(log_frame, text="Apply Laplace of Gaussian Filter", font=("Arial", 16))
+        log_label.pack(pady=20)
+        self.laplace_sigma_entry = ctk.CTkEntry(log_frame, placeholder_text="Sigma")
         self.laplace_sigma_entry.pack(pady=2)
-
-        # Process Button
-        self.process_button = ctk.CTkButton(self, text="Process Image", command=self.process_image)
+        
+        self.process_button = ctk.CTkButton(log_frame, text="Log Image", font=("Arial", 14, "bold"), command=self.log_image)
         self.process_button.pack(pady=20)
 
     def update_seuillage_entries(self, choice):
@@ -258,8 +284,8 @@ class ImageProcessorApp(ctk.CTk):
         elif choice == "Hysteresis":
             self.threshold_high_entry.configure(state="normal")
         else:
-            self.threshold_low_entry.configure(state="disabled")
-            self.threshold_high_entry.configure(state="disabled")
+            self.threshold_low_entry.configure(state="normal")
+            self.threshold_high_entry.configure(state="normal")
 
 
     def upload_image(self):
@@ -316,8 +342,32 @@ class ImageProcessorApp(ctk.CTk):
             plt.imshow(self.noisy_image, cmap="gray")
 
             plt.show()
-        else:
-            self.noisy_image = self.image
+        
+    def plot_filtered_images(self, grad_x, grad_y, gradient_image, original_image, filter_choice ):
+        plt.figure(figsize=(15, 5))
+
+        # Plot original image
+        plt.subplot(1, 4, 4)
+        plt.title("input Image")
+        plt.imshow(original_image, cmap="gray")
+
+        # Plot horizontal gradient
+        plt.subplot(1, 4, 1)
+        plt.title(f"Image horizontal de {filter_choice}")
+        plt.imshow(grad_x, cmap="gray")
+
+        # Plot vertical gradient
+        plt.subplot(1, 4, 2)
+        plt.title(f"Image vertical de {filter_choice}")
+        plt.imshow(grad_y, cmap="gray")
+
+        # Plot gradient magnitude
+        plt.subplot(1, 4, 3)
+        plt.title(f"Gradient de {filter_choice}")
+        plt.imshow(gradient_image, cmap="gray")
+
+        plt.show()
+
             
     def filter_Image_noise(self):
         # Ensure an image is provided
@@ -339,31 +389,40 @@ class ImageProcessorApp(ctk.CTk):
             grad_x, grad_y = None, None
 
         if grad_x is not None and grad_y is not None:
-            global gradient_image
-            gradient_image = Gradient(grad_x, grad_y)
-            plt.figure(figsize=(15, 5))
-            
-            plt.subplot(1,4,4)
-            plt.title("Image original")
-            plt.imshow(self.noisy_image, cmap="gray")
-            
-            plt.subplot(1, 4, 1)
-            plt.title(f"Image horizontal de {filter_choice}")
-            plt.imshow(grad_x, cmap="gray")
+            global gradient_image_bruit
+            gradient_image_bruit = Gradient(grad_x, grad_y)
+            self.plot_filtered_images(grad_x, grad_y, gradient_image_bruit, self.noisy_image, filter_choice)
 
-            plt.subplot(1, 4, 2)
-            plt.title(f"Image vertical de {filter_choice}")
-            plt.imshow(grad_y, cmap="gray")
-
-            plt.subplot(1, 4, 3)
-            plt.title(f"Gradient de {filter_choice}")
-            plt.imshow(gradient_image, cmap="gray")
-
-            plt.show()
             
-    def process_image(self):
+    def filter_Image_original(self):
+        # Ensure an image is provided
+        if self.image is None:
+            messagebox.showerror("Error", "No image available for filtering.")
+            return
+        # Apply filter
+        filter_choice = self.filter_var.get()
+        if filter_choice == "None":
+            messagebox.showerror("Error", "Please choose a filter.")
+            return
+        if filter_choice == "Prewitt":
+            grad_x, grad_y = prewitt(self.image)
+        elif filter_choice == "Sobel":
+            grad_x, grad_y = sobel(self.image)
+        elif filter_choice == "Robert":
+            grad_x, grad_y = robert(self.image)
+        else:
+            grad_x, grad_y = None, None
+
+        if grad_x is not None and grad_y is not None:
+            global gradient_image_original
+            gradient_image_original = Gradient(grad_x, grad_y)
+            self.plot_filtered_images(grad_x, grad_y, gradient_image_original, self.image, filter_choice)
             
+    def seuillage_on_gradient(self,image_gradient):
         # Apply thresholding
+        if image_gradient is None:
+            messagebox.showerror("Error", "No gradient image available for thresholding.")
+            return
         threshold_choice = self.threshold_var.get()
         if threshold_choice == "Simple":
             low_threshold = self.threshold_low_entry.get()
@@ -371,39 +430,22 @@ class ImageProcessorApp(ctk.CTk):
                 messagebox.showerror("Error", "Please enter the low threshold for Simple thresholding.")
                 return
             seuil = float(self.threshold_low_entry.get())
-            binary_image = SeuilSim(self.image, seuil)
-            noisy_binary_image = SeuilSim(self.noisy_image, seuil)
-            binary_gradient_image = SeuilSim(gradient_image, seuil)
+            seuillage_gradient = SeuilSim(image_gradient, seuil)
             plt.figure(figsize=(12, 8))
             
-            plt.subplot(2,3, 1)
-            plt.title("Original Image")
+            plt.subplot(1,3, 1)
+            plt.title("input Image")
             plt.imshow(self.image, cmap="gray")
            
             
-            plt.subplot(2, 3, 2)
-            plt.title(f"Noisy Image{noise_choice}")
-            plt.imshow(self.noisy_image, cmap="gray")
-           
-            
-            plt.subplot(2, 3, 3)
+            plt.subplot(1, 3, 2)
             plt.title("Gradient")
-            plt.imshow(gradient_image, cmap="gray")
-           
-
-            plt.subplot(2, 3, 4)
-            plt.title(f"original Image after SeuilSim {threshold_choice}")
-            plt.imshow(binary_image, cmap="gray")
+            plt.imshow(image_gradient, cmap="gray")
+                       
             
-            
-            plt.subplot(2, 3, 5)
-            plt.title(f"Noisy Image after Seuillage {threshold_choice}")
-            plt.imshow(noisy_binary_image, cmap="gray")
-           
-            
-            plt.subplot(2, 3, 6)
-            plt.title(f"Gradient Image after Seuillage {threshold_choice}")
-            plt.imshow(binary_gradient_image, cmap="gray")
+            plt.subplot(1, 3, 3)
+            plt.title(f"Image after Seuillage {threshold_choice}")
+            plt.imshow(seuillage_gradient, cmap="gray")
             
 
             plt.show()
@@ -413,141 +455,45 @@ class ImageProcessorApp(ctk.CTk):
             if not seuil_bas or not seuil_haut:
                 messagebox.showerror("Error", "Please enter both low and high thresholds for Hysteresis thresholding.")
                 return
-            binary_gradient_image = SeuilHys(gradient_image, seuil_bas, seuil_haut)
-            binary_image = SeuilHys(self.image, seuil_bas, seuil_haut)
-            noisy_binary_image = SeuilHys(self.noisy_image, seuil_bas, seuil_haut)
+            seuillage_gradient = SeuilHys(image_gradient, seuil_bas, seuil_haut)
             
             plt.figure(figsize=(12, 8))            
-            plt.subplot(2,3, 1)
-            plt.title("Original Image")
+            plt.subplot(1,3, 1)
+            plt.title("input Image")
             plt.imshow(self.image, cmap="gray")
             
-            
-            plt.subplot(2, 3, 2)
-            plt.title(f"Noisy Image {noise_choice}")
-            plt.imshow(self.noisy_image, cmap="gray")
-            
-            
-            plt.subplot(2, 3, 3)
+            plt.subplot(1, 3, 2)
             plt.title("Gradient")
-            plt.imshow(gradient_image, cmap="gray")
+            plt.imshow(image_gradient, cmap="gray")
            
-
-            plt.subplot(2, 3, 4)
-            plt.title(f"original Image after Seuillage {threshold_choice}")
-            plt.imshow(binary_image, cmap="gray")
+            plt.subplot(1, 3, 3)
+            plt.title(f"Image after Seuillage {threshold_choice}")
+            plt.imshow(seuillage_gradient, cmap="gray")
            
-            
-            plt.subplot(2, 3, 5)
-            plt.title(f"Noisy Image after Seuillage {threshold_choice}")
-            plt.imshow(noisy_binary_image, cmap="gray")
-        
-            
-            plt.subplot(2, 3, 6)
-            plt.title(f"Gradient Image after SeuilSim {threshold_choice}")
-            plt.imshow(binary_gradient_image, cmap="gray")
-            
-
             plt.show()
 
         # Apply Laplace filter
-        if self.laplace_var.get() == "Yes":
-            sigma = float(self.laplace_sigma_entry.get())
-            if not sigma:
-                messagebox.showerror("Error", "Please enter a sigma value for the Laplace filter.")
-                return
-            laplace_image = LOG(self.image, sigma)
-
-        # Display the processed image (example for Laplace image)
-        if self.laplace_var.get() == "Yes":
-            plt.figure(figsize=(10, 5))
-            plt.subplot(1, 2, 1)
-            plt.title("Original Image")
-            plt.imshow(self.image, cmap="gray")
-           
-
-            plt.subplot(1, 2, 2)
-            plt.title("Log Image")
-            plt.imshow(laplace_image, cmap="gray")
-            
-
-            plt.show()
+    def log_image(self):
+        
+        if self.image is None:
+            messagebox.showerror("Error", "Please upload an image first.")
+            return
+        sigma = float(self.laplace_sigma_entry.get())
+        if not sigma:
+            messagebox.showerror("Error", "Please enter a sigma value for the Laplace filter.")
+            return
+        laplace_image = LOG(self.image, sigma)
+        plt.figure(figsize=(10, 5))
+        plt.subplot(1, 2, 1)
+        plt.title("Original Image")
+        plt.imshow(self.image, cmap="gray")
+        
+        plt.subplot(1, 2, 2)
+        plt.title("Log Image")
+        plt.imshow(laplace_image, cmap="gray")
+        
+        plt.show()
 
 if __name__ == "__main__":
-    app = ImageProcessorApp()
+    app = ImageProcessingApp()
     app.mainloop()
-
-    # # Adjust grid size to 2 rows x 6 columns
-    # plt.figure(figsize=(18, 8))
-    
-    # # Original image and filters
-    # plt.subplot(2, 6, 1)
-    # plt.title("Image Originale")
-    # plt.imshow(image, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 2)
-    # plt.title("Filtre Horizontal Original")
-    # plt.imshow(grad_x, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 3)
-    # plt.title("Filtre Vertical Original")
-    # plt.imshow(grad_y, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 4)
-    # plt.title("Gradient Original")
-    # plt.imshow(gradient_image, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 5)
-    # plt.title("Seuillage Original")
-    # plt.imshow(binary_gradient_image, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 6)
-    # plt.title("Filtre Laplace Original")
-    # plt.imshow(laplace_image, cmap="gray")
-    # plt.axis("off")
-    
-    # # Noisy image and filters
-    # plt.subplot(2, 6, 7)
-    # plt.title("Image Bruitée")
-    # plt.imshow(noisy_image, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 8)
-    # plt.title("Filtre Horizontal Bruitée")
-    # plt.imshow(noisy_grad_x, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 9)
-    # plt.title("Filtre Vertical Bruitée")
-    # plt.imshow(noisy_grad_y, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 10)
-    # plt.title("Gradient Bruitée")
-    # plt.imshow(noisy_gradient_image, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 11)
-    # plt.title("Seuillage Bruitée")
-    # plt.imshow(noisy_binary_gradient_image, cmap="gray")
-    # plt.axis("off")
-    
-    # plt.subplot(2, 6, 12)
-    # plt.title("Filtre Laplace Bruitée")
-    # plt.imshow(noisy_laplace_image, cmap="gray")
-    # plt.axis("off")
-    
-    # # Layout adjustment
-    # plt.tight_layout()
-    # plt.show()
-
-
-
-# if __name__ == "__main__":
-#     image_path = 'cameraman.jpg'  # Chemin de votre image
-#     main(image_path)
