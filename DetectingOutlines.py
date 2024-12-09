@@ -261,9 +261,9 @@ class ImageProcessingApp(ctk.CTk):
         self.threshold_high_entry = ctk.CTkEntry(threshold_frame, placeholder_text="High Threshold")
         self.threshold_high_entry.pack(pady=5)
 
-        self.threshold_button = ctk.CTkButton(threshold_frame, text="Apply on Noisy Image", command=lambda: self.seuillage_on_gradient(gradient_image_bruit))
+        self.threshold_button = ctk.CTkButton(threshold_frame, text="Apply on Noisy Image", command=lambda: self.seuillage_on_gradient(gradient_image_bruit,self.noisy_image))
         self.threshold_button.pack(pady=5)
-        self.threshold_button_original = ctk.CTkButton(threshold_frame, text="Apply on Original Image", command=lambda: self.seuillage_on_gradient(gradient_image_original))
+        self.threshold_button_original = ctk.CTkButton(threshold_frame, text="Apply on Original Image", command=lambda: self.seuillage_on_gradient(gradient_image_original,self.image))
         self.threshold_button_original.pack(pady=5)
 
         # Section: Log Image
@@ -418,7 +418,7 @@ class ImageProcessingApp(ctk.CTk):
             gradient_image_original = Gradient(grad_x, grad_y)
             self.plot_filtered_images(grad_x, grad_y, gradient_image_original, self.image, filter_choice)
             
-    def seuillage_on_gradient(self,image_gradient):
+    def seuillage_on_gradient(self,image_gradient,image):
         # Apply thresholding
         if image_gradient is None:
             messagebox.showerror("Error", "No gradient image available for thresholding.")
@@ -431,11 +431,11 @@ class ImageProcessingApp(ctk.CTk):
                 return
             seuil = float(self.threshold_low_entry.get())
             seuillage_gradient = SeuilSim(image_gradient, seuil)
-            plt.figure(figsize=(12, 8))
+            plt.figure(figsize=(15,5))
             
             plt.subplot(1,3, 1)
             plt.title("input Image")
-            plt.imshow(self.image, cmap="gray")
+            plt.imshow(image, cmap="gray")
            
             
             plt.subplot(1, 3, 2)
@@ -457,10 +457,10 @@ class ImageProcessingApp(ctk.CTk):
                 return
             seuillage_gradient = SeuilHys(image_gradient, seuil_bas, seuil_haut)
             
-            plt.figure(figsize=(12, 8))            
+            plt.figure(figsize=(15,5))            
             plt.subplot(1,3, 1)
             plt.title("input Image")
-            plt.imshow(self.image, cmap="gray")
+            plt.imshow(image, cmap="gray")
             
             plt.subplot(1, 3, 2)
             plt.title("Gradient")
